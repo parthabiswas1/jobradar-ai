@@ -183,12 +183,12 @@ def show():
                 raw = search_company_url(search_name)
             seen, unique = set(), []
             for c in raw:
-                norm = c['url'].rstrip("/")
+                norm = c["url"].rstrip("/")
                 if norm not in seen:
                     seen.add(norm)
                     unique.append(c)
             st.session_state["search_candidates"] = unique
-            st.session_state["search_name"]       = search_name
+            st.session_state["search_name"] = search_name
 
         if st.session_state.get("search_candidates"):
             unique = st.session_state["search_candidates"]
@@ -196,15 +196,11 @@ def show():
             st.success(f"Found {len(unique)} candidate(s):")
             for i, c in enumerate(unique):
                 col1, col2, col3 = st.columns([3, 1, 1])
-                col1.write(f"🌐 {c['url']}")
-                col2.markdown(f"[Open ↗]({c['url']})")
-                if col3.button("➕ Use This", key=f"cbtn_{i}_{abs(hash(c['url']))%99999}"):
-                    st.session_state["prefill_url"]       = c["url"]
-                    st.session_state["prefill_name"]      = _name_from_url(c["url"])
+                curl = c["url"]
+                col1.write(f"🌐 {curl}")
+                col2.markdown(f'<a href="{curl}" target="_blank">Open ↗</a>', unsafe_allow_html=True)
+                if col3.button("✅ Use This", key=f"cbtn_{i}_{abs(hash(curl))%99999}"):
+                    st.session_state["prefill_url"]  = c["url"]
+                    st.session_state["prefill_name"] = sname.strip().title()
                     st.session_state["search_candidates"] = []
                     st.rerun()
-        elif "search_candidates" in st.session_state:
-            st.warning("No candidates found. Try the Google Search link:")
-            if st.session_state.get("search_name"):
-                q = st.session_state["search_name"].replace(" ", "+")
-                st.markdown(f"[🔍 Google: {st.session_state['search_name']} official website](https://google.com/search?q={q}+official+website)")
