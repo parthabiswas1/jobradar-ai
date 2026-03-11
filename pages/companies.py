@@ -118,29 +118,32 @@ def show():
     with tab3:
         st.subheader("🔍 Find Company Website by Name")
         st.write("Don't know a company's URL? Enter the name and we'll try to find it.")
-        
-        search_name = st.text_input("Company Name", placeholder="e.g. Figma, Notion, Linear")
+
+        search_name = st.text_input("Company Name", placeholder="e.g. Figma, Notion, Linear", key="company_search_input")
         if st.button("🔍 Search", type="primary") and search_name:
             with st.spinner(f"Searching for {search_name}..."):
-                candidates = search_company_url(search_name)
-            
-            if candidates:
-                # Deduplicate by URL
-                seen_urls = set()
-                unique_candidates = []
-                for c in candidates:
-                    if c['url'] not in seen_urls:
-                        seen_urls.add(c['url'])
-                        unique_candidates.append(c)
-                
-                st.success(f"Found {len(unique_candidates)} candidate(s):")
-                for i, c in enumerate(unique_candidates):
-                    col1, col2 = st.columns([3, 1])
-                    col1.write(f"🌐 {c['url']}")
-                    if col2.button("➕ Add This", key=f"add_{i}_{c['url'][-20:]}"):
-                        st.session_state["prefill_url"] = c["url"]
-                        st.session_state["prefill_name"] = search_name
-                        st.info(f"Go to 'Add Company' tab and use URL: {c['url']}")
-            else:
-                st.warning("No candidates found automatically. Try searching manually.")
-                st.markdown(f"Try: [Google Search](https://google.com/search?q={search_name.replace(' ','+')}+careers+site)")
+                raw = search_company_url(search_name)
+            seen, unique = set(), []
+            for c in raw:
+                if c['url'] not in seen:
+                    seen.add(c['url'])
+                    unique.append(c)
+            st.session_state["search_candidates"] = unique
+            st.session_state["search_name"] = search_name
+
+        if st.session_state.get("search_candidates"):
+            unique = st.session_state["search_candidates"]
+            sname  = st.session_state.get("search_name", "")
+            st.success(f"Found {len(unique)} candidate(s):")
+            for i, c in enumerate(unique):
+                col1, col2 = st.columns([3, 1])
+                col1.write(f"🌐 {c['url']}")
+                if col2.button("➕ Add This", key=f"candidate_btn_{i}"):
+                    st.session_state["prefill_url"]  = c["url"]
+                    st.session_state["prefill_name"] = sname
+                    st.session_state["search_candidates"] = []
+                    st.info(f"Go to 'Add Company' tab and use URL: {c['url']}")
+        elif "search_candidates" in st.session_state:
+            st.warning("No candidates found automatically. Try searching manually.")
+            if st.session_state.get("search_name"):
+                st.markdown(f"Try: [Google Search](https://google.com/search?q={st.session_state['search_name'].replace(' ','+')}+careers+site)")
