@@ -22,7 +22,10 @@ def show():
 
     # ── Tab 1: Add Company ────────────────────────────────────────────────
     with tab1:
-        st.info("💡 Enter the website URL — company name is auto-filled. The AI will find their careers page automatically.")
+        if st.session_state.pop("company_added", False):
+            st.success("✅ Company added successfully! Add another or switch to Manage Companies.")
+        else:
+            st.info("💡 Enter the website URL — company name is auto-filled. The AI will find their careers page automatically.")
 
         # ── URL input — drives everything ──────────────────────────────────
         # Read any prefilled values from Find URL tab
@@ -97,9 +100,7 @@ def show():
                 add_log("info", f"Added: {name} → {career_url or 'no career URL'}", "companies")
                 st.success(f"✅ **{name}** added to your target companies!")
 
-                # Clear inputs via session state
-                st.session_state["add_url_input"]  = ""
-                st.session_state["add_name_input"] = ""
+                st.session_state["company_added"] = True
                 st.rerun()
 
     # ── Tab 2: Manage Companies ───────────────────────────────────────────
