@@ -242,3 +242,160 @@ def search_company_url(company_name: str) -> list:
         except Exception:
             pass
     return valid
+
+
+def ai_find_career_url(company_url: str, company_name: str = "", api_key: str = "") -> dict:
+    """
+    AI-powered career page finder.
+    Step 1: Scrape the homepage and collect all links.
+    Step 2: Ask Claude to identify which link is most likely the careers page.
+    Step 3: Follow that link, check for ATS redirects.
+    Returns {'career_url': ..., 'ats_type': ..., 'confidence': ..., 'method': 'ai'}
+    """
+    import anthropic
+
+    base = company_url.rstrip("/")
+    add_log("info", f"AI career finder starting for {company_name or base}", "ai_finder")
+
+    # ── Step 1: scrape homepage for all links + page text ──────────────────
+    try:
+        r = requests.get(base, headers=HEADERS, timeout=12, allow_redirects=True)
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as e:
+        add_log("error", f"Could not fetch homepage {base}: {e}", "ai_finder")
+        return {"career_url": "", "ats_type": "unknown", "confidence": "low", "method": "ai"}
+
+    # Collect all links with their anchor text
+    links = []
+    seen = set()
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        text = a.get_text(strip=True)
+        if not href or href.startswith("#") or href.startswith("mailto:"):
+            continue
+        full = urljoin(base, href)
+        # Only keep links on the same domain or known ATS domains
+        parsed = urlparse(full)
+        base_domain = urlparse(base).netloc.replace("www.", "")
+        is_same_domain = base_domain in parsed.netloc
+        is_ats = any(ats in parsed.netloc for ats in [
+            "greenhouse.io", "lever.co", "workday.com", "ashbyhq.com",
+            "smartrecruiters.com", "jobvite.com", "icims.com", "myworkdayjobs.com"
+        ])
+        if (is_same_domain or is_ats) and full not in seen:
+            seen.add(full)
+            links.append({"url": full, "text": text[:80]})
+
+    if not links:
+        add_log("warning", f"No links found on homepage of {base}", "ai_finder")
+        return {"career_url": "", "ats_type": "unknown", "confidence": "low", "method": "ai"}
+
+    # Also grab nav/footer text for context
+    page_text = ""
+    for tag in soup.find_all(["nav", "footer", "header"]):
+        page_text += tag.get_text(separator=" ", strip=True)[:500]
+
+    # ── Step 2: Ask Claude ─────────────────────────────────────────────────
+    if not api_key:
+        # Fall back to keyword matching if no API key
+        add_log("warning", "No API key for AI finder, using keyword fallback", "ai_finder")
+        return _keyword_career_finder(base, links)
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        links_text = "\n".join(
+            f"- {l['url']}  [{l['text']}]" for l in links[:80]
+        )
+        prompt = f"""You are helping find the careers/jobs page for a company.
+
+Company: {company_name or base}
+Homepage: {base}
+
+Here are all the links found on their homepage:
+{links_text}
+
+Page context (nav/footer text):
+{page_text[:800]}
+
+Task: Identify the single best URL that leads to their careers, jobs, or hiring page.
+The page might be called: Careers, Jobs, Work With Us, Join Us, Join the Team, We're Hiring, Open Roles, Opportunities, Team, etc.
+It could also be an external ATS like Greenhouse, Lever, Workday, Ashby.
+
+Respond ONLY with a JSON object, no markdown:
+{{
+  "career_url": "<the best URL or empty string if none found>",
+  "confidence": "high|medium|low",
+  "page_name": "<what the link was called>",
+  "reasoning": "<one sentence>"
+}}"""
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        text = message.content[0].text.strip().replace("```json","").replace("```","").strip()
+        result = json.loads(text)
+        career_url = result.get("career_url", "")
+        confidence = result.get("confidence", "medium")
+        reasoning  = result.get("reasoning", "")
+        page_name  = result.get("page_name", "")
+
+        add_log("info", f"AI found career page: {career_url} ({page_name}) — {reasoning}", "ai_finder")
+
+        if not career_url:
+            return {"career_url": "", "ats_type": "unknown", "confidence": "low", "method": "ai"}
+
+        # ── Step 3: follow the URL and detect ATS ─────────────────────────
+        try:
+            r2 = requests.get(career_url, headers=HEADERS, timeout=10, allow_redirects=True)
+            final_url = r2.url
+            ats = detect_ats(final_url)
+            # If redirected to ATS, use that
+            if ats != "generic":
+                career_url = final_url
+        except Exception:
+            ats = detect_ats(career_url)
+
+        return {
+            "career_url": career_url,
+            "ats_type": ats,
+            "confidence": confidence,
+            "page_name": page_name,
+            "reasoning": reasoning,
+            "method": "ai",
+        }
+
+    except Exception as e:
+        add_log("error", f"AI career finder failed: {e}", "ai_finder")
+        return _keyword_career_finder(base, links)
+
+
+def _keyword_career_finder(base: str, links: list) -> dict:
+    """Fallback: keyword-based link scoring."""
+    CAREER_KEYWORDS = [
+        "career", "careers", "jobs", "job", "hiring", "work-with-us",
+        "join-us", "join", "work with us", "we're hiring", "opportunities",
+        "open roles", "positions", "vacancies", "talent", "team"
+    ]
+    best_url, best_score, best_text = "", 0, ""
+    for link in links:
+        url_lower  = link["url"].lower()
+        text_lower = link["text"].lower()
+        score = 0
+        for kw in CAREER_KEYWORDS:
+            if kw in url_lower:  score += 3
+            if kw in text_lower: score += 2
+        # Bonus for ATS domains
+        if any(ats in url_lower for ats in ["greenhouse","lever","workday","ashby"]):
+            score += 5
+        if score > best_score:
+            best_score, best_url, best_text = score, link["url"], link["text"]
+
+    if best_url:
+        ats = detect_ats(best_url)
+        confidence = "high" if best_score >= 5 else "medium" if best_score >= 2 else "low"
+        add_log("info", f"Keyword finder: {best_url} (score {best_score})", "ai_finder")
+        return {"career_url": best_url, "ats_type": ats, "confidence": confidence, "method": "keyword"}
+
+    return {"career_url": "", "ats_type": "unknown", "confidence": "low", "method": "keyword"}
