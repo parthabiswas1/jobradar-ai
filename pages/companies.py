@@ -25,14 +25,19 @@ def show():
         st.info("💡 Enter the website URL — company name is auto-filled. The AI will find their careers page automatically.")
 
         # ── URL input — drives everything ──────────────────────────────────
+        # Read any prefilled values from Find URL tab
+        prefill_url  = st.session_state.pop("prefill_url",  "")
+        prefill_name = st.session_state.pop("prefill_name", "")
+
         url_input = st.text_input(
             "Company Website URL *",
+            value=prefill_url,
             placeholder="https://parloa.com",
             key="add_url_input"
         )
 
         # Auto-suggest company name from URL
-        suggested_name = _name_from_url(url_input) if url_input else ""
+        suggested_name = prefill_name or (_name_from_url(url_input) if url_input else "")
         name_input = st.text_input(
             "Company Name *",
             value=suggested_name,
@@ -190,11 +195,10 @@ def show():
                 col1, col2 = st.columns([3, 1])
                 col1.write(f"🌐 {c['url']}")
                 if col2.button("➕ Use This URL", key=f"cbtn_{i}_{abs(hash(c['url']))%99999}"):
-                    # Pre-fill the Add Company tab
-                    st.session_state["add_url_input"]  = c["url"]
-                    st.session_state["add_name_input"] = _name_from_url(c["url"])
+                    st.session_state["prefill_url"]  = c["url"]
+                    st.session_state["prefill_name"] = _name_from_url(c["url"])
                     st.session_state["search_candidates"] = []
-                    st.success("✅ Switched to Add Company tab — URL has been pre-filled!")
+                    st.rerun()
         elif "search_candidates" in st.session_state:
             st.warning("No candidates found automatically.")
             if st.session_state.get("search_name"):
