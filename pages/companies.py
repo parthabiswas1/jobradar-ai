@@ -125,11 +125,19 @@ def show():
                 candidates = search_company_url(search_name)
             
             if candidates:
-                st.success(f"Found {len(candidates)} candidate(s):")
+                # Deduplicate by URL
+                seen_urls = set()
+                unique_candidates = []
                 for c in candidates:
+                    if c['url'] not in seen_urls:
+                        seen_urls.add(c['url'])
+                        unique_candidates.append(c)
+                
+                st.success(f"Found {len(unique_candidates)} candidate(s):")
+                for i, c in enumerate(unique_candidates):
                     col1, col2 = st.columns([3, 1])
                     col1.write(f"🌐 {c['url']}")
-                    if col2.button("➕ Add This", key=f"add_{c['url']}"):
+                    if col2.button("➕ Add This", key=f"add_{i}_{c['url'][-20:]}"):
                         st.session_state["prefill_url"] = c["url"]
                         st.session_state["prefill_name"] = search_name
                         st.info(f"Go to 'Add Company' tab and use URL: {c['url']}")
