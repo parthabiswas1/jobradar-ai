@@ -138,7 +138,7 @@ def show():
             for i, c in enumerate(unique):
                 col1, col2 = st.columns([3, 1])
                 col1.write(f"🌐 {c['url']}")
-                if col2.button("➕ Add This", key=f"candidate_btn_{i}"):
+                if col2.button("➕ Add This", key=f"cbtn_{i}_{abs(hash(c['url']))%99999}"):
                     st.session_state["prefill_url"]  = c["url"]
                     st.session_state["prefill_name"] = sname
                     st.session_state["search_candidates"] = []

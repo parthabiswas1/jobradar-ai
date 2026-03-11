@@ -220,9 +220,8 @@ def _infer_seniority(title: str) -> str:
 def search_company_url(company_name: str) -> list:
     """
     Use a simple web search heuristic to guess company URL.
-    Returns a list of candidates.
+    Returns a deduplicated list of candidates.
     """
-    # Build plausible domains
     slug = re.sub(r"[^a-z0-9]", "", company_name.lower())
     candidates = [
         f"https://www.{slug}.com",
@@ -232,10 +231,13 @@ def search_company_url(company_name: str) -> list:
         f"https://www.{slug}.co",
     ]
     valid = []
+    seen_final_urls = set()
     for url in candidates:
         try:
             r = requests.head(url, headers=HEADERS, timeout=6, allow_redirects=True)
-            if r.status_code < 400:
+            final_url = r.url.rstrip("/")
+            if r.status_code < 400 and final_url not in seen_final_urls:
+                seen_final_urls.add(final_url)
                 valid.append({"url": r.url, "status": r.status_code})
         except Exception:
             pass
