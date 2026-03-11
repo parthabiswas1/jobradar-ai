@@ -1,7 +1,7 @@
 import re
 import streamlit as st
 from utils.db import get_companies, save_companies, add_company, update_company, delete_company, add_log, get_config
-from utils.scraper import ai_find_career_url, search_company_url, detect_ats
+from utils.scraper import ai_find_career_url, detect_ats
 
 
 def _name_from_url(url: str) -> str:
@@ -175,32 +175,36 @@ def show():
         st.subheader("🔍 Find Company Website by Name")
         st.write("Don't know a company's URL? Enter the name and we'll try to find it.")
 
-        search_name = st.text_input("Company Name", placeholder="e.g. Figma, Notion, Linear", key="company_search_input")
+        search_name = st.text_input("Company Name", placeholder="e.g. Parloa, Figma, Notion", key="company_search_input")
+
         if st.button("🔍 Search", type="primary", key="search_btn") and search_name:
+            from utils.scraper import search_company_url
             with st.spinner(f"Searching for {search_name}..."):
                 raw = search_company_url(search_name)
             seen, unique = set(), []
             for c in raw:
-                if c['url'].rstrip("/") not in seen:
-                    seen.add(c['url'].rstrip("/"))
+                norm = c['url'].rstrip("/")
+                if norm not in seen:
+                    seen.add(norm)
                     unique.append(c)
             st.session_state["search_candidates"] = unique
-            st.session_state["search_name"] = search_name
+            st.session_state["search_name"]       = search_name
 
         if st.session_state.get("search_candidates"):
             unique = st.session_state["search_candidates"]
             sname  = st.session_state.get("search_name", "")
             st.success(f"Found {len(unique)} candidate(s):")
             for i, c in enumerate(unique):
-                col1, col2 = st.columns([3, 1])
+                col1, col2, col3 = st.columns([3, 1, 1])
                 col1.write(f"🌐 {c['url']}")
-                if col2.button("➕ Use This URL", key=f"cbtn_{i}_{abs(hash(c['url']))%99999}"):
-                    st.session_state["prefill_url"]  = c["url"]
-                    st.session_state["prefill_name"] = _name_from_url(c["url"])
+                col2.markdown(f"[Open ↗]({c['url']})")
+                if col3.button("➕ Use This", key=f"cbtn_{i}_{abs(hash(c['url']))%99999}"):
+                    st.session_state["prefill_url"]       = c["url"]
+                    st.session_state["prefill_name"]      = _name_from_url(c["url"])
                     st.session_state["search_candidates"] = []
                     st.rerun()
         elif "search_candidates" in st.session_state:
-            st.warning("No candidates found automatically.")
+            st.warning("No candidates found. Try the Google Search link:")
             if st.session_state.get("search_name"):
                 q = st.session_state["search_name"].replace(" ", "+")
-                st.markdown(f"Try: [Google Search](https://google.com/search?q={q}+official+website)")
+                st.markdown(f"[🔍 Google: {st.session_state['search_name']} official website](https://google.com/search?q={q}+official+website)")
